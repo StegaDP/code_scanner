@@ -1,0 +1,143 @@
+name: Release builds
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.16.0
+
+      - name: Build release artifacts (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          mkdir -p dist
+
+          targets=(
+            x86_64-linux-musl
+            aarch64-linux-musl
+          )
+
+          for target in "${targets[@]}"; do
+            zig build -Doptimize=ReleaseFast -Dtarget="${target}"
+            out="dist/code-scanner-${target}"
+            mkdir -p "${out}"
+            cp "zig-out/bin/code-scanner" "${out}/code-scanner"
+            cp "README.md" "${out}/README.md"
+            tar -C dist -czf "dist/code-scanner-${target}.tar.gz" "code-scanner-${target}"
+            rm -rf "${out}"
+          done
+
+      - name: Build release artifacts (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          mkdir -p dist
+
+          targets=(
+            x86_64-macos
+            aarch64-macos
+          )
+
+          for target in "${targets[@]}"; do
+            zig build -Doptimize=ReleaseFast -Dtarget="${target}"
+            out="dist/code-scanner-${target}"
+            mkdir -p "${out}"
+            cp "zig-out/bin/code-scanner" "${out}/code-scanner"
+            cp "README.md" "${out}/README.md"
+            tar -C dist -czf "dist/code-scanner-${target}.tar.gz" "code-scanner-${target}"
+            rm -rf "${out}"
+          done
+
+      - name: Build release artifacts (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Remove-Item -Recurse -Force dist -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force dist | Out-Null
+
+          $targets = @(
+            "x86_64-windows-gnu"
+          )
+
+          foreach ($target in $targets) {
+            zig build -Doptimize=ReleaseFast -Dtarget=$target
+            $out = Join-Path dist ("code-scanner-$target")
+            New-Item -ItemType Directory -Force $out | Out-Null
+            Copy-Item -Force "zig-out\\bin\\code-scanner.exe" (Join-Path $out "code-scanner.exe")
+            Copy-Item -Force "README.md" (Join-Path $out "README.md")
+            Compress-Archive -Force -Path $out -DestinationPath (Join-Path dist ("code-scanner-$target.zip"))
+            Remove-Item -Recurse -Force $out
+          }
+
+      - name: Generate SHA256 checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum * > SHA256SUMS.txt
+          else
+            shasum -a 256 * > SHA256SUMS.txt
+          fi
+
+      - name: Upload artifacts (workflow)
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.os }}
+          path: dist/*
+
+  release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Combine artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          mkdir -p dist
+          find artifacts -type f -maxdepth 2 -mindepth 2 -print0 | xargs -0 -I{} cp "{}" dist/
+
+      - name: Create combined checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum * | sort -k2 > SHA256SUMS.txt
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*
+
