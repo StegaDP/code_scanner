@@ -84,7 +84,7 @@ jobs:
           )
 
           foreach ($target in $targets) {
-            zig build -Doptimize=ReleaseFast -Dtarget=$target
+            zig build -Doptimize=ReleaseFast "-Dtarget=$($target)"
             $out = Join-Path dist ("code-scanner-$target")
             New-Item -ItemType Directory -Force $out | Out-Null
             Copy-Item -Force "zig-out\\bin\\code-scanner.exe" (Join-Path $out "code-scanner.exe")
@@ -92,17 +92,6 @@ jobs:
             Compress-Archive -Force -Path $out -DestinationPath (Join-Path dist ("code-scanner-$target.zip"))
             Remove-Item -Recurse -Force $out
           }
-
-      - name: Generate SHA256 checksums
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd dist
-          if command -v sha256sum >/dev/null 2>&1; then
-            sha256sum * > SHA256SUMS.txt
-          else
-            shasum -a 256 * > SHA256SUMS.txt
-          fi
 
       - name: Upload artifacts (workflow)
         uses: actions/upload-artifact@v4
@@ -140,4 +129,3 @@ jobs:
         with:
           files: |
             dist/*
-

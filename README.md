@@ -27,6 +27,15 @@ Binary output:
 zig-out\bin\code-scanner.exe
 ```
 
+## Releases (GitHub)
+
+Pushing a tag like `v1.2.3` triggers a GitHub Actions workflow that builds binaries for:
+- Linux: `x86_64-linux-musl`, `aarch64-linux-musl`
+- macOS: `x86_64-macos`, `aarch64-macos`
+- Windows: `x86_64-windows-gnu`
+
+The GitHub Release includes a `SHA256SUMS.txt` you can use to verify downloaded artifacts.
+
 ## Run
 
 Scan current directory:
